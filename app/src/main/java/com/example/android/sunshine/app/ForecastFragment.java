@@ -1,8 +1,11 @@
 package com.example.android.sunshine.app;
 
+import android.content.Intent;
+import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.preference.PreferenceManager;
 import android.support.v4.app.Fragment;
 import android.text.format.Time;
 import android.util.Log;
@@ -12,6 +15,7 @@ import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
 
@@ -36,6 +40,9 @@ public class ForecastFragment extends Fragment {
 
     private ArrayAdapter<String> mForecastAdapter;
 
+    private String location;
+    private SharedPreferences sharedPref;
+
     public ForecastFragment() {
     }
 
@@ -44,15 +51,24 @@ public class ForecastFragment extends Fragment {
                              Bundle savedInstanceState) {
         View rootView = inflater.inflate(R.layout.fragment_main, container, false);
         ArrayList<String> weatherData = new ArrayList<>();
-        weatherData.add("Today - Sunny - 88/63");
-        weatherData.add("Tomorrow - Foggy - 88/63");
-        weatherData.add("Wednesday - Cloudy - 88/63");
-        weatherData.add("Thursday - Sunny - 88/63");
-        weatherData.add("Friday - Sunny - 88/63");
-        weatherData.add("Saturday - Sunny - 88/63");
-        mForecastAdapter = new ArrayAdapter<String>(getActivity(), R.layout.list_item_forecast, R.id.list_item_forecast_textview, weatherData);
+        sharedPref = PreferenceManager.getDefaultSharedPreferences(getContext());
+        mForecastAdapter =
+                new ArrayAdapter<>(
+                        getActivity(),
+                        R.layout.list_item_forecast,
+                        R.id.list_item_forecast_textview,
+                        weatherData);
+
         ListView myListView = (ListView) rootView.findViewById(R.id.listview_forecast);
         myListView.setAdapter(mForecastAdapter);
+        myListView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> adapterView, View view, int i, long l) {
+                Intent goToDetailIntent = new Intent(getContext(), DetailActivity.class);
+                goToDetailIntent.putExtra("WEATHER_DATA", mForecastAdapter.getItem(i));
+                startActivity(goToDetailIntent);
+            }
+        });
         return rootView;
     }
 
@@ -60,6 +76,12 @@ public class ForecastFragment extends Fragment {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setHasOptionsMenu(true);
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+        updateWeather();
     }
 
     @Override
@@ -71,10 +93,15 @@ public class ForecastFragment extends Fragment {
     public boolean onOptionsItemSelected(MenuItem item) {
         int id = item.getItemId();
         if (id == R.id.action_refresh) {
-            new FetchWeatherTask().execute("M4Y3G5");
+            updateWeather();
             return true;
         }
         return super.onOptionsItemSelected(item);
+    }
+
+    private void updateWeather() {
+        location = sharedPref.getString(getString(R.string.pref_location_key), "");
+        new FetchWeatherTask().execute(location);
     }
 
     public class FetchWeatherTask extends AsyncTask<String, Void, String[]> {
@@ -92,7 +119,7 @@ public class ForecastFragment extends Fragment {
             HttpURLConnection urlConnection = null;
             BufferedReader reader = null;
 
-            String forecastJsonStr = null;
+            String forecastJsonStr;
             String format = "json";
             String units = "metric";
             int numDays = 7;
@@ -135,7 +162,7 @@ public class ForecastFragment extends Fragment {
                     // Since it's JSON, adding a newline isn't necessary (it won't affect parsing)
                     // But it does make debugging a *lot* easier if you print out the completed
                     // buffer for debugging.
-                    buffer.append(line + "\n");
+                    buffer.append(line).append("\n");
                 }
 
                 if (buffer.length() == 0) {
@@ -174,6 +201,11 @@ public class ForecastFragment extends Fragment {
 
         private String formatHighLows(double high, double low) {
             // For presentation, assume the user doesn't care about tenths of a degree.
+            String unit = sharedPref.getString(getString(R.string.pref_unit_key), "");
+            if (unit.equals("1")) {
+                high = high * 1.8 + 32;
+                low = low * 1.8 + 32;
+            }
             long roundedHigh = Math.round(high);
             long roundedLow = Math.round(low);
             String highLowStr = roundedHigh + "/" + roundedLow;
@@ -232,7 +264,7 @@ public class ForecastFragment extends Fragment {
 
         @Override
         protected void onPostExecute(String[] result) {
-            if(result != null) {
+            if (result != null) {
                 mForecastAdapter.clear();
                 mForecastAdapter.addAll(result);
             }
